@@ -1,263 +1,44 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-  <meta charset="utf-8">
-  <title>Anime Runner – Straight Platform</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
-  <style>
-    body {
-      margin: 0;
-      background: black;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
-    
-    canvas {
-      background: black;
-      border-radius: 12px;
-    }
-    
-    @media screen and (orientation:portrait) {
-      body::before {
-        content: "Rotate your phone to landscape →";
-        color: white;
-        position: fixed;
-        inset: 0;
-        background: black;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-        z-index: 999;
-      }
-    }
-  </style>
+<meta charset="utf-8">
+<title>Anime Runner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  background: black;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+canvas {
+  background: black;
+  border-radius: 12px;
+}
+</style>
 </head>
-
 <body>
-  
-  <canvas id="game" width="640" height="360"></canvas>
-  
-  <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
-    
-    const GROUND_Y = canvas.height - 32;
-    const TILE_SRC = 32; // source tile size in new tileset
-    const TILE_SIZE = 32; // same size on screen
-    
-    /* Telegram safe */
-    try {
-      if (window.Telegram && Telegram.WebApp) Telegram.WebApp.expand();
-    } catch (e) {}
-    
-    /* Image loader */
-    function loadImage(src) {
-      return new Promise((res, rej) => {
-        const img = new Image();
-        img.onload = () => res(img);
-        img.onerror = () => rej("Failed to load: " + src);
-        img.src = src;
-      });
-    }
-    
-    /* Load assets */
-    Promise.all([
-      loadImage("assets/images/character.png"),
-      loadImage("assets/images/bg_far.png"),
-      loadImage("assets/images/bg_mid.png"),
-      loadImage("assets/images/bg_near.png"),
-      
-      loadImage("assets/images/tiles/dirt.png"),
-      loadImage("assets/images/tiles/green_grass.png"),
-      loadImage("assets/images/tiles/snow_grass.png"),
-      loadImage("assets/images/tiles/yellow_grass.png")
-    ]).then(startGame).catch(err => {
-      document.body.innerHTML = "<h3 style='color:red'>" + err + "</h3>";
-    });
-    
-    /* ================= GAME ================= */
-    
-    function startGame([
-      charImg,
-      bgFar,
-      bgMid,
-      bgNear,
-      dirtTile,
-      greenGrassTile,
-      snowGrassTile,
-      yellowGrassTile
-    ]) {
-      
-      // SELECT CURRENT BIOME TILE
-      let currentGrass = greenGrassTile;
-      // options:
-      // greenGrassTile
-      // snowGrassTile
-      // yellowGrassTile
-      
-      /* ========= PLAYER ========= */
-      const player = {
-        x: 120,
-        y: GROUND_Y - 48,
-        w: 48,
-        h: 48,
-        vy: 0,
-        
-        frame: 0,
-        tick: 0,
-        
-        frameWidth: 32,
-        frameHeight: 32,
-        runFrames: 4,
-        runRow: 2,
-        
-        hitbox: { offsetX: 8, offsetY: 6, width: 32, height: 38 }
-      };
-      
-      let gravity = 0.75;
-      let jumpForce = -12.5;
-      let speed = 6;
-      
-      /* ========= PARALLAX ========= */
-      const bg = {
-        farX: 0,
-        midX: 0,
-        nearX: 0,
-        farSpeed: 0.5,
-        midSpeed: 1.5,
-        nearSpeed: 3
-      };
-      
-      function drawParallax() {
-        bg.farX -= bg.farSpeed;
-        bg.midX -= bg.midSpeed;
-        bg.nearX -= bg.nearSpeed;
-        
-        if (bg.farX <= -canvas.width) bg.farX = 0;
-        if (bg.midX <= -canvas.width) bg.midX = 0;
-        if (bg.nearX <= -canvas.width) bg.nearX = 0;
-        
-        ctx.drawImage(bgFar, bg.farX, 0, canvas.width, canvas.height);
-        ctx.drawImage(bgFar, bg.farX + canvas.width, 0, canvas.width, canvas.height);
-        
-        ctx.drawImage(bgMid, bg.midX, 0, canvas.width, canvas.height);
-        ctx.drawImage(bgMid, bg.midX + canvas.width, 0, canvas.width, canvas.height);
-        
-        ctx.drawImage(bgNear, bg.nearX, 0, canvas.width, canvas.height);
-        ctx.drawImage(bgNear, bg.nearX + canvas.width, 0, canvas.width, canvas.height);
-      }
-      
-      /* ========= TILE MAPPING (STRAIGHT PLATFORM) =========
-         Based on your description:
 
-         groundTop  → rows 9–11, cols 9–12 (use row 9 col 9)
-         groundFill → rows 14–15, cols 1–4 (use row 14 col 1)
-      */
-      const BIOME = {
-        // ROW 1 – Green grass top-left solid block
-        groundTop: { x: 0, y: 0 },
-        
-        // ROW 2 – Dirt body under grass
-        groundFill: { x: 0, y: 1 }
-      };
-      
-      let groundScrollX = 0;
-      
-      function drawStraightPlatform() {
-        groundScrollX -= speed;
-        if (groundScrollX <= -32) {
-          groundScrollX = 0;
-        }
-        
-        for (let x = groundScrollX; x < canvas.width + 32; x += 32) {
-          
-          // TOP GRASS TILE
-          ctx.drawImage(
-            currentGrass,
-            x,
-            GROUND_Y - 32,
-            32,
-            32
-          );
-          
-          // DIRT FILL BELOW (3 layers)
-          for (let y = 0; y < 3; y++) {
-            ctx.drawImage(
-              dirtTile,
-              x,
-              GROUND_Y + y * 32,
-              32,
-              32
-            );
-          }
-        }
-      }
-      
-      /* ========= GAME LOOP ========= */
-      function loop() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        drawParallax();
-        drawStraightPlatform();
-        
-        /* Physics */
-        player.vy += gravity;
-        player.y += player.vy;
-        
-        const targetY = GROUND_Y - TILE_SIZE - player.h;
-        
-        if (player.y >= targetY) {
-          player.y = targetY;
-          player.vy = 0;
-        }
-        
-        /* Animation */
-        player.tick++;
-        if (player.tick % 6 === 0) {
-          player.frame++;
-          if (player.frame >= player.runFrames) player.frame = 0;
-        }
-        
-        /* Draw Player */
-        ctx.drawImage(
-          charImg,
-          player.frame * player.frameWidth,
-          player.runRow * player.frameHeight,
-          player.frameWidth,
-          player.frameHeight,
-          player.x,
-          player.y,
-          player.w,
-          player.h
-        );
-        
-        // Debug hitbox (optional)
-        // ctx.strokeStyle = "red";
-        // ctx.strokeRect(
-        //   player.x + player.hitbox.offsetX,
-        //   player.y + player.hitbox.offsetY,
-        //   player.hitbox.width,
-        //   player.hitbox.height
-        // );
-        
-        requestAnimationFrame(loop);
-      }
-      
-      canvas.addEventListener("click", () => {
-        if (player.vy === 0) {
-          player.vy = jumpForce;
-        }
-      });
-      
-      loop();
-    }
-  </script>
-  
+<canvas id="game" width="640" height="360"></canvas>
+
+<script src="js/config.js"></script>
+
+<script src="js/core/loader.js"></script>
+<script src="js/core/input.js"></script>
+<script src="js/core/sound.js"></script>
+
+<script src="js/world/background.js"></script>
+<script src="js/world/tiles.js"></script>
+<script src="js/world/decoration.js"></script>
+
+<script src="js/entities/player.js"></script>
+<script src="js/entities/npc.js"></script>
+<script src="js/entities/enemy.js"></script>
+
+<script src="js/main.js"></script>
+
 </body>
-
 </html>
